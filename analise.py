@@ -47,13 +47,17 @@ def fix_broken_lines(text_lines, line_number):
     """
     t1 = text_lines[line_number+1]
     t2 = text_lines[line_number+2]
+    t3 = text_lines[line_number+3]
     # check if they are related to the entity
     if t1.isupper():
         text_lines[line_number] = text_lines[line_number] + ' - ' + t1
         text_lines[line_number+1] = ''
-        if t2.isupper():
-            text_lines[line_number] = text_lines[line_number] + t2
+        if t2.isupper() and not any(x in t2 for x in ['CAPÍTULO', 'SEÇÃO']):
+            text_lines[line_number] = text_lines[line_number] + ' ' + t2
             text_lines[line_number+2] = ''
+        if t3.isupper() and not any(x in t3 for x in ['CAPÍTULO', 'SEÇÃO']):
+            text_lines[line_number] = text_lines[line_number] + ' ' + t3
+            text_lines[line_number+3] = ''
             
     return text_lines
         
@@ -111,9 +115,10 @@ def classify(line):
     if re.search('^[a-z]\) ', line):
         defined = True
         result.append('alinea')
-    # tema
+    # tipo
     if not defined:
-        result.append('tema')
+        if ' de pena' not in line:
+            result.append('tipo')
     return result
 
 def get_all_entitie_lines(text_lines, entity):
@@ -131,12 +136,21 @@ def apply_corrections(text_lines):
     # replace line 2 by line 1 and vice versa
     text_lines[0], text_lines[1] = text_lines[1], text_lines[0]
     
+    # replace line 3892 by line 3894 and vice versa
+    text_lines[3892], text_lines[3894] = text_lines[3894], text_lines[3892]
+    
     # replace typo 1o by 1º on line 1870
     text_lines[1869] = text_lines[1869].replace('1o', '1º')
 
     # removing lines 3553 and 3554
     text_lines[3552] = ''
     text_lines[3553] = ''
+    
+    # line 3554 should be all caps
+    text_lines[3554] = text_lines[3554].upper()
+    
+    # line 1261 missing dash
+    text_lines[1261] = 'III - ' + text_lines[1261][4:]
     
     # fix broken CAPÍTULO lines
     line_numbers = get_all_entitie_lines(text_lines, 'capitulo')
@@ -201,8 +215,21 @@ lines = []
 count = 0
 for n, line in enumerate(text_lines):
     classification = classify(line)
-    if line != '' and all(x in classification for x in ['secao']):
+    if line != '' and any(x in classification for x in ['secao', 
+        'titulo', 'capitulo', 'parte', 'tipo' ]):
         count += 1
-        print((n, line, classification))
+        item = (n, line, classification)
+        lines.append (item)
+        print(count, ' - ', item[0], ' - ', item[1], ' - ', item[2])
         print('==================================================')
 print(f'{count} ocorrências')
+
+option = input('Entre o número do ítem : ')
+start = lines[int(option)+1][0]
+end = lines[int(option)+2][0]
+print(item[1], start, '->', end)
+for line in text_lines:
+    if line != '':
+        pass
+        # print(line)
+        # print('\n================================\n')
