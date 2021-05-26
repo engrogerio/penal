@@ -66,56 +66,67 @@ def fix_broken_lines(text_lines, line_number):
 def classify(line):
     defined = False
     result = []
+    
+    # revogado
+    if '(revogado' in line.lower():
+        defined = True
+        result.append('revogado')
+    
+    # vetado
+    if '(vetado' in line.lower():
+        defined = True
+        result.append('vetado')
+    
     # referencia
     if 'Lei nº ' in line:
         # defined = True
         result.append('referencia')
     # parte
-    if 'PARTE' in line:
+    if 'PARTE' in line and not defined:
         defined = True
         result.append('parte')
     # titulo
-    if any(line.startswith(f'TÍTULO {x}') for x in get_roman_numbers()):
+    if any(line.startswith(f'TÍTULO {x}') for x in get_roman_numbers()) and not defined:
         defined = True
         result.append('titulo')
     # capitulo
-    if any(line.startswith(f'CAPÍTULO {x}') for x in get_roman_numbers()): 
+    if any(line.startswith(f'CAPÍTULO {x}') for x in get_roman_numbers()) and not defined: 
         defined = True
         result.append('capitulo')
     # seção
-    if any(line.startswith(f'SEÇÃO {x}') for x in get_roman_numbers()): 
+    if any(line.startswith(f'SEÇÃO {x}') for x in get_roman_numbers()) and not defined: 
         defined = True
         result.append('secao')
     # artigo
-    if 'Art. ' in line:
+    if 'Art. ' in line  and not defined:
         defined = True
         result.append('artigo')
     # paragrafo
-    if any(x in line for x in ["Parágrafo único", "§ "]):
+    if any(x in line for x in ["Parágrafo único", "§ "]) and not defined:
         defined = True
         result.append('paragrafo')
     # pena
-    if any(x in line for x in ['Pena - ', 'Pena: ']):
+    if any(x in line for x in ['Pena - ', 'Pena: ']) and not defined:
         defined = True
         result.append('pena')
         
     # atenuante 
-    if any(x in line.lower() for x in ['reduzida', 'reduzir', 'diminuída']) and 'pena' in line.lower():
+    if any(x in line.lower() for x in ['reduzida', 'reduzir', 'diminuída']) and 'pena' in line.lower() and not defined:
         defined = True
         result.append('atenuante')
     
     # agravante 
-    if any(x in line.lower() for x in ['aumentada', 'aumentar', 'aumentam', 'aumenta-se']) and 'pena' in line.lower():
+    if any(x in line.lower() for x in ['aumentada', 'aumentar', 'aumentam', 'aumenta-se']) and 'pena' in line.lower() and not defined:
         defined = True
         result.append('agravante')
     
     # inciso
-    if any(line.startswith(f'{x} - ') for x in get_roman_numbers()): 
+    if any(line.startswith(f'{x} - ') for x in get_roman_numbers()) and not defined: 
         defined = True
         result.append('inciso')
         
     # alinea
-    if re.search('^[a-z]\) ', line):
+    if re.search('^[a-z]\) ', line) and not defined:
         defined = True
         result.append('alinea')
     
@@ -285,9 +296,12 @@ text_lines = apply_classification(text_lines)
 
 lines = get_lines_by_tag(text_lines, ['secao', 'titulo', 
                                     'capitulo', 'parte'])
+tab = 0
 for line in lines:
-    print(line) #[0], ' - ', line[1], '-', line[2], ' - ', line[3])
-    print('==================================================')
+    tag = line[1][2][-1]
+    tab = 0 if tag == 'parte' else 1 if tag == 'titulo' else 2 if tag =='capitulo' else 3 if tag =='secao' else 0
+    
+    print(line[0], '-', ' '*4*tab, line[1][1].strip()) #, '-', line[2], ' - ', line[3])
 
 option = input('Entre o número do ítem : ')
 opt = int(option)
@@ -297,21 +311,22 @@ item_count = item[0]
 item_line_number = item[1][0]
 item_content = item[1][1]
 item_tags = item[1][2]
-print(item_content)
+
 # get the line start and end for the choosed item
 start = item_line_number
 
 # show up first
 # grab the last item_tag (-1) due to the tag "reference" 
 # appears always as the first item
-end = get_tag_end_line(text_lines, start, item_tags[-1]) 
-# print ('&&&&', start, item_tags[-1], end)
-count = 0
-for line in text_lines[start: end]:
-    if any(x in line[2] for x in ['tipo', 'capitulo', 'artigo', 'paragrafo', 
-                 'inciso', 'alinea']): 
-        count += 1
-        print(count, ' - ', line)
+end = get_tag_end_line(text_lines, start, item_tags[-1])
+
+lines = get_lines_by_tag(text_lines[start: end], ['tipo', 'artigo'])
+
+tab = 0
+for line in lines:
+    tag = line[1][2][-1]
+    tab = 0 if tag == 'tipo' else 1 if tag == 'artigo' else 0
+    print(line[0], '-', ' '*4*tab, line[1][1].strip()) #,line[1][2])
 
 option = input('Entre o número do ítem : ')
 opt = int(option)
@@ -322,5 +337,19 @@ item_line_number = item[1][0]
 item_content = item[1][1]
 item_tags = item[1][2]
 
-print(text_lines)
 
+# get the line start and end for the choosed item
+start = item_line_number
+
+# show up first
+# grab the last item_tag (-1) due to the tag "reference" 
+# appears always as the first item
+end = get_tag_end_line(text_lines, start, item_tags[-1])
+
+lines = get_lines_by_tag(text_lines[start: end], ['artigo', 'pena', 'paragrafo', 'agravante', 'atenuante'])
+
+tab = 0
+for line in lines:
+    tag = line[1][2][-1]
+    tab = 0 if tag == 'artigo' else 1 if tag == 'paragrafo' else 2 if tag == 'pena' else 3 if tag == 'agravante' else 3 if tag == 'atenuante' else 0
+    print(line[0], '-', ' '*4*tab, line[1][1].strip()) #,line[1][2])
