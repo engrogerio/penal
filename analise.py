@@ -34,6 +34,9 @@ def get_roman_numbers():
 def get_fraction_numbers():
     return numeros.get_fractions()
 
+def get_numbers() -> dict:
+    return numeros.get_extenso()
+
 def fix_broken_lines(text_lines, line_number):
     """
     Fix lines like: 
@@ -110,15 +113,15 @@ def classify(line):
         defined = True
         result.append('pena')
         
-    # atenuante 
+    # diminuicao 
     if any(x in line.lower() for x in ['reduzida', 'reduzir', 'diminuída']) and 'pena' in line.lower() and not defined:
         defined = True
-        result.append('atenuante')
+        result.append('diminuicao')
     
-    # agravante 
+    # aumento 
     if any(x in line.lower() for x in ['aumentada', 'aumentar', 'aumentam', 'aumenta-se']) and 'pena' in line.lower() and not defined:
         defined = True
-        result.append('agravante')
+        result.append('aumento')
     
     # inciso
     if any(line.startswith(f'{x} - ') for x in get_roman_numbers()) and not defined: 
@@ -201,45 +204,6 @@ def apply_corrections(text_lines):
     
     return text_lines
 
-def referencias(line):
-    lines = {}
-    for n, line in enumerate(text_lines):
-        if 'Lei nº ' in line:
-            lines[line] = {}
-            lines[line]["line_number"] = n
-            lines[line]["lei"] = text_lines[n]
-    return lines
-          
-def partes(text_lines):
-    lines = {}
-    for n, line in enumerate(text_lines):
-        if 'PARTE' in line: 
-            lines[line] = {}
-            lines[line]["line_number"] = n
-            lines[line]["name"] = text_lines[n]
-
-    return lines
-
-def titulos(text_lines):
-    lines = {}
-    roman_numbers = get_roman_numbers()
-    for n, line in enumerate(text_lines):
-        if any(line.startswith(f'TÍTULO {x}') for x in roman_numbers): 
-            lines[line] = {}
-            lines[line]["line_number"] = n
-            lines[line]["name"] = text_lines[n+1]
-    return lines
-
-def capitulos(text_lines):
-    lines = {}
-    roman_numbers = get_roman_numbers()
-    for n, line in enumerate(text_lines):
-        if any(line.startswith(f'CAPÍTULO {x}') for x in roman_numbers): 
-            lines[line] = {}
-            lines[line]["line_number"] = n
-            lines[line]["name"] = text_lines[n+1]
-    return lines
-
 def get_tag_end_line(text_lines: list, start_line: int, tag: str) -> int:
     """
     Returns the line which has the same tag as the start.
@@ -257,18 +221,62 @@ def get_tag_end_line(text_lines: list, start_line: int, tag: str) -> int:
     # Lets grab the line before the next tag start (-1)
     end_line = lines[1][1][0] - 1
     return end_line
+
+def extract_data(line: str, classification):
+    print('&&', classification)
+    data = {"referencia": "", "penas": []}
+    if 'referencia' in classification:
+        result = re.search(r'\(Incluído.*?\)|\(Redação.*?\)|Vide lei.*?', line)
+        data['referencia'] = result.group(0) if result else None
     
+    if 'pena' in classification:
+        results = re.findall(r'detenção,.*?|reclusão,.*?|e multa.*?|ou multa.*?', line)
+        for result in results:
+            unidade = "anos-luz"
+            maximo = "1"
+            minimo = "120"
+            data['penas'].append(
+            {
+                "tipo": result,
+                "quantitativo":
+                {
+                    "unidade": unidade,
+                    "maximo": maximo,
+                    "minimo": minimo
+                }
+            }
+            )
+    if any(x in classification for x in ['aumento', 'diminuicao']):
+        unidade = "fracao"
+        maximo = "1/6"
+        minimo = "1/3"
+        data['penas'].append(
+            {
+            "tipo": classification,
+            "quantitativo":
+            {
+                "unidade": unidade,
+                "maximo": maximo,
+                "minimo": minimo
+            }
+        }
+        )
+    
+    print(line, '\n', data, '\n==================================\n')
+    return data
+
 def apply_classification(text_lines) -> list:
     """
     Returns a list of tuples with:
-    (law line number, law text, list of tags)
+    (law line number, law text, list of tags, reference)
     
     """
     lines = []
     count = 0
     for n, line in enumerate(text_lines):
         classification = classify(line)
-        item = (n, line, classification)
+        data = extract_data(line, classification)
+        item = (n, line, classification, data)
         lines.append (item)
     return lines
 
@@ -294,14 +302,15 @@ text_lines = get_text('decreto.txt')
 text_lines = apply_corrections(text_lines)
 text_lines = apply_classification(text_lines)
 
-lines = get_lines_by_tag(text_lines, ['secao', 'titulo', 
-                                    'capitulo', 'parte'])
+lines = get_lines_by_tag(text_lines, ['secao', 'titulo', 'capitulo', 
+                                      'parte', 'artigo', 'pena', 'paragrafo', 
+                                      'aumento', 'diminuicao', 'inciso', 'alinea'])
 tab = 0
 for line in lines:
     tag = line[1][2][-1]
     tab = 0 if tag == 'parte' else 1 if tag == 'titulo' else 2 if tag =='capitulo' else 3 if tag =='secao' else 0
     
-    print(line[0], '-', ' '*4*tab, line[1][1].strip()) #, '-', line[2], ' - ', line[3])
+    # print(line[0], '-', ' '*4*tab, line[1][1].strip()) #, '-', line[2], ' - ', line[3])
 
 option = input('Entre o número do ítem : ')
 opt = int(option)
@@ -346,10 +355,13 @@ start = item_line_number
 # appears always as the first item
 end = get_tag_end_line(text_lines, start, item_tags[-1])
 
-lines = get_lines_by_tag(text_lines[start: end], ['artigo', 'pena', 'paragrafo', 'agravante', 'atenuante'])
+lines = get_lines_by_tag(text_lines[start: end], ['artigo', 'pena', 'paragrafo', 'aumento', 'diminuicao', 'inciso', 'alinea'])
 
 tab = 0
 for line in lines:
     tag = line[1][2][-1]
-    tab = 0 if tag == 'artigo' else 1 if tag == 'paragrafo' else 2 if tag == 'pena' else 3 if tag == 'agravante' else 3 if tag == 'atenuante' else 0
-    print(line[0], '-', ' '*4*tab, line[1][1].strip()) #,line[1][2])
+    tab = 0 if tag == 'artigo' else 1 if tag == 'paragrafo'\
+        else 2 if tag == 'inciso' else 3 if tag == 'alinea' else 4 if tag == 'pena'\
+        else 5 if tag == 'aumento' else 6 if tag == 'diminuicao' else 0
+    # print(line[0], '-', ' '*4*tab, line[1][1].strip()) #,line[1][2])
+    print(line)

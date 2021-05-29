@@ -16,7 +16,7 @@ def get_extenso() -> dict:
         'vinte e oito', 'vinte e nove', 'trinta']
     numbers = range(1, 31)
 
-    return dict(zip(numbers, extenso))
+    return dict(zip(extenso, numbers))
 
 def roman_numbers():
 
