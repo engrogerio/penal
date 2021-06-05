@@ -1,7 +1,8 @@
 def get_fractions():
-    fractions = ['um', 'terço', 'quarto', 'quinto', 'sexto']
-    numbers = [1, 3, 4, 5, 6]
-    return dict(zip(numbers, fractions))
+    fractions = ['um', 'metade', 'terço', 'quarto', 'quinto', 'sexto']
+    numbers = [1, 1/2, 1/3, 1/4, 1/5, 1/6]
+    result = dict(zip(fractions, numbers))
+    result['dobro'] = 2
     
 def get_extenso() -> dict:
     """
