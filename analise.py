@@ -1,247 +1,167 @@
-from collections import defaultdict
-from typing import DefaultDict
-import numeros
-import re
+from utils import *
 
-def get_text(file_name) -> list:
-    lines = []
-    fractions = get_fraction_numbers()
-    with open(file_name, 'r', encoding='utf-8') as text:
-    # removing empty lines and spaces
-        for line in text:
-            #if len(line.strip()) == 0:
-            #    continue # if line is empty, don't bring.
-
-            # replace numbers in text (extenso) by digits
-            numbers = numeros.get_extenso()
-            for k,v in numbers.items():
-                line = line.replace(f'{k} ', f'{v} ') 
- 
-            # TODO: replace fraction number in text: um sexto => 1/6
-            # for k,v in fractions.items():
-                # line = line.replace(f'{v} ', f'/{k} ')
-
-            # replace all – by -
-            line = line.replace('–', '-')
-            lines.append(line.strip())
-
-    return lines
-
-def get_roman_numbers():
-    roman_numbers = [f'{n}' for n in numeros.roman_numbers()]
-    return roman_numbers
-
-def get_fraction_numbers():
-    return numeros.get_fractions()
-
-def get_numbers() -> dict:
-    return numeros.get_extenso()
-
-def fix_broken_lines(text_lines, line_number):
+def apply_metadata(text_lines: list[dict]):
     """
-    Fix lines like: 
-    CAPITULO I
-    DAS ESPÉCIES DE PENA 
-    
-    to 
-    CAPITULO I - DAS ESPÉCIES DE PENA 
-    
-    Método deve saber quantas linhas precisam ser agregadas.
-    
-    :param: line_number
-    """
-    t1 = text_lines[line_number+1]
-    t2 = text_lines[line_number+2]
-    t3 = text_lines[line_number+3]
-    # check if they are related to the entity
-    if t1.isupper():
-        text_lines[line_number] = text_lines[line_number] + ' - ' + t1
-        text_lines[line_number+1] = ''
-        if t2.isupper() and not any(x in t2 for x in ['CAPÍTULO', 'SEÇÃO']):
-            text_lines[line_number] = text_lines[line_number] + ' ' + t2
-            text_lines[line_number+2] = ''
-        if t3.isupper() and not any(x in t3 for x in ['CAPÍTULO', 'SEÇÃO']):
-            text_lines[line_number] = text_lines[line_number] + ' ' + t3
-            text_lines[line_number+3] = ''
-            
-    return text_lines
-        
-def classify(line):
-    defined = False
-    result = []
-    
-    # revogado
-    if '(revogado' in line.lower():
-        defined = True
-        result.append('revogado')
-    
-    # vetado
-    if '(vetado' in line.lower():
-        defined = True
-        result.append('vetado')
-    
-    # referencia
-    if 'Lei nº ' in line:
-        # defined = True
-        result.append('referencia')
-    # parte
-    if 'PARTE' in line and not defined:
-        defined = True
-        result.append('parte')
-    # titulo
-    if any(line.startswith(f'TÍTULO {x}') for x in get_roman_numbers()) and not defined:
-        defined = True
-        result.append('titulo')
-    # capitulo
-    if any(line.startswith(f'CAPÍTULO {x}') for x in get_roman_numbers()) and not defined: 
-        defined = True
-        result.append('capitulo')
-    # seção
-    if any(line.startswith(f'SEÇÃO {x}') for x in get_roman_numbers()) and not defined: 
-        defined = True
-        result.append('secao')
-    # artigo
-    if 'Art. ' in line  and not defined:
-        # defined = True #
-        result.append('artigo')
-    # paragrafo
-    if any(x in line for x in ["Parágrafo único", "§ "]) and not defined:
-        # defined = True
-        result.append('paragrafo')
-    # pena
-    if any(x in line for x in ['Pena - ', 'Pena: ']) and not defined:
-        defined = True
-        result.append('pena')
-        
-    # diminuicao 
-    if any(x in line.lower() for x in ['reduzida', 'reduzir', 'diminuída']) and 'pena' in line.lower() and not defined:
-        defined = True
-        result.append('diminuicao')
-    
-    # aumento 
-    if any(x in line.lower() for x in ['aumentada', 'aumentar', 'aumentam', 'aumenta-se']) and 'pena' in line.lower() and not defined:
-        defined = True
-        result.append('aumento')
-    
-    # inciso
-    if any(line.startswith(f'{x} - ') for x in get_roman_numbers()) and not defined: 
-        defined = True
-        result.append('inciso')
-        
-    # alinea
-    if re.search('^[a-z]\) ', line) and not defined:
-        defined = True
-        result.append('alinea')
-    
-    # vazio
-    if line == '':
-        defined = True
-        result.append('vazio')
-    
-    # tipo
-    if not defined:
-        if ' de pena' not in line and ' da pena' not in line:
-            if not re.search('^\(.*\)', line):
-                result.append('tipo')
-            
-    return result
-
-def get_all_entitie_lines(text_lines, entity):
-    """
-    return all document line numbers for the entity passed as parameter.
+    return text_lines with a dictionary for the metadata below:
+    {
+        "revogado": True,
+        "vetado": False,
+        "parte": "",
+        "titulo": "",
+        "capitulo": "",
+        "secao": "",
+        "tema": "",
+        "artigo": "",
+        "paragrafo": "",
+        "pena": "",
+        "diminuicao": "",
+        "aumento": "",
+        "inciso": "",
+        "referencia": ""
+    }
     """
     lines = []
+    vazio = revogado = vetado = parte = titulo = capitulo = secao = tema = artigo = paragrafo = alinea = pena = inciso = referencia = None
+    capitulo_secao = titulo_capitulo = secao_artigo = capitulo_artigo = titulo_artigo = parte_artigo = None
+    artigo_paragrafo = paragrafo_inciso = paragrafo_alinea = None
+    metadata = {}
     for n, line in enumerate(text_lines):
-        classification = classify(line)
-        if all(x in classification for x in [entity]):
-            lines.append(n)
+        line_text = line.get('text', None)
+
+        # revogado
+        revogado = True if '(revogado' in line_text.lower() else False
+        
+        # vetado
+        vetado = True if '(vetado' in line_text.lower() else False
+          
+        # referencia TODO: remove parentesis
+        referencia_check = re.search('Lei nº [0-9]+.+', line_text)
+        referencia = referencia_check.group() if referencia_check else referencia
+
+        # parte
+        parte_check = line_text.split(' ')[1] if 'PARTE' in line_text else None
+        if parte_check:
+            parte = parte_check 
+            continue
+        
+        # titulo
+        titulo_check = line_text if line_text.startswith('TÍTULO') else None
+        if titulo_check:
+            titulo = titulo_check  
+            continue
+                
+        # capítulo
+        # check if a capitulo is only inside its own titulo
+        capitulo_check = line_text if line_text.startswith('CAPÍTULO') else None
+        if capitulo_check:
+            capitulo = capitulo_check
+            titulo_capitulo = titulo
+            continue
+        else:
+            if titulo_capitulo != titulo:
+                capitulo = None  
+            
+            
+        # seção
+        # check if a seção is only inside its own capítulo
+        secao_check = line_text if line_text.startswith('SEÇÃO') else None
+        if secao_check:
+            secao = secao_check
+            capitulo_secao = capitulo
+            continue
+        else:
+            if capitulo_secao != capitulo:
+                secao = None    
+        
+        
+        # artigo
+        # check if an artigo is only inside its own capítulo or seção
+        artigo_check = re.search('^Art\. [0-9]*-?.', line_text)
+        if artigo_check:
+            artigo = artigo_check.group()
+            secao_artigo = secao
+            capitulo_artigo = capitulo
+            titulo_artigo = titulo
+            parte_artigo = parte
+            continue
+        else:
+            if secao_artigo != secao or capitulo_artigo != capitulo or titulo_artigo != titulo or parte_artigo != parte: 
+                artigo = None    
+        
+        # paragrafo
+        paragrafo_check = re.search('§ [0-9]+|Parágrafo único', line_text)
+        if paragrafo_check:
+            artigo_paragrafo = artigo
+            paragrafo = paragrafo_check.group()
+            continue
+        else:
+            if artigo_paragrafo != artigo:
+                paragrafo = None
+        
+        # inciso should detect roman numerals
+        # TODO match n spaces before roman numerals
+        inciso_check = re.search('^ ?M{0,4}(CM|CD|D?C{0,3})(XC|XL|L?X{0,3})(IX|IV|V?I{0,3}) ', line_text)
+        if inciso_check:
+            paragrafo_inciso = paragrafo
+            inciso = inciso_check.group()
+            continue
+        else:
+            if paragrafo_inciso != paragrafo:
+                inciso = None
+        
+        # pena
+        # alinea
+        alinea_check = re.search('^[a-z]\) ', line_text)
+        if alinea_check:
+            paragrafo_alinea = paragrafo
+            alinea = alinea_check.group()
+            continue
+        else:
+            if paragrafo_alinea != paragrafo:
+                alinea = None
+        
+        # pena
+        # pena = True if any(x in line_text for x in ['Pena - ', 'Pena: ']) else False
+        # pena_check = line_text.startswith()('§ [0-9]+|Parágrafo único', line_text)
+        # if paragrafo_check:
+        #     paragrafo = paragrafo_check.group()
+        #     continue
+        
+        # diminuicao 
+        diminuicao = True if any(x in line_text.lower() for x in ['reduzida', 'reduzir', 'diminuída']) and 'pena' in line_text.lower() else False
+        
+        # aumento 
+        aumento = True if any(x in line_text.lower() for x in ['aumentada', 'aumentar', 'aumentam', 'aumenta-se']) and 'pena' in line_text.lower() else False
+        
+       
+        # vazio
+        vazio = True if len(line_text) == 0 else False
+        
+        # tipo
+        
+        # if ' de pena' not in line and ' da pena' not in line and not re.search('^\(.*\)', line):
+        #     result.append('tipo')
+        
+        metadata['vazio'] = vazio
+        metadata['revogado'] = revogado
+        metadata['vetado'] = vetado 
+        metadata['parte'] = parte
+        metadata['titulo'] = titulo
+        metadata['capitulo']= capitulo
+        metadata['secao'] = secao
+        metadata['tema'] = tema
+        metadata['artigo'] = artigo
+        metadata['paragrafo'] = paragrafo
+        metadata['pena'] = pena
+        metadata['diminuicao'] = diminuicao
+        metadata['aumento'] = aumento
+        metadata['inciso'] = inciso
+        metadata['alinea'] = alinea
+        metadata['referencia'] = referencia 
+        
+        lines.append(dict(text=line, metadata=metadata.copy()))
+        metadata = {}
     return lines
-
-def apply_corrections(text_lines):
-    # replace line 2 by line 1 and vice versa
-    text_lines[0], text_lines[1] = text_lines[1], text_lines[0]
-    
-    # replace line 3892 by line 3894 and vice versa
-    text_lines[3892], text_lines[3894] = text_lines[3894], text_lines[3892]
-    
-    # replace line 3919 by line 3920 and vice versa
-    text_lines[3919], text_lines[3920] = text_lines[3920], text_lines[3919]
-
-    #lines 2476 replace 2478 and vice versa
-    text_lines[2476], text_lines[2478] = text_lines[2478], text_lines[2476]
-    
-    # replace typo 1o by 1º on line 1870
-    text_lines[1869] = text_lines[1869].replace('1o', '1º')
-
-
-    # replace typo : by - on line 3677
-    text_lines[3677] = text_lines[3677].replace(':', ' -')
-
-    # removing lines 3553 and 3554
-    # line 3554 should be all caps
-    text_lines[3552] = text_lines[3554].upper()
-    text_lines[3553] = ''
-    text_lines[3554] = ''
-    
-
-    # line 1261 missing dash
-    text_lines[1261] = 'III - ' + text_lines[1261][4:]
-    
-    # fix broken CAPÍTULO lines
-    line_numbers = get_all_entitie_lines(text_lines, 'capitulo')
-    for line_number in line_numbers:
-        fix_broken_lines(text_lines, line_number)
-        
-    # fix broken SEÇÃO lines
-    line_numbers = get_all_entitie_lines(text_lines, 'secao')
-    for line_number in line_numbers:
-        fix_broken_lines(text_lines, line_number)
-
-    # fix broken TÍTULO lines
-    line_numbers = get_all_entitie_lines(text_lines, 'titulo')
-    for line_number in line_numbers:
-        fix_broken_lines(text_lines, line_number)
-        
-    # break lines with 2 penas
-    # 3502
-    line = text_lines[3502].split(' e ')
-    text_lines[3502] = ' '.join(line[0:2])
-    text_lines[3503] = 'Pena - ' + ' '.join(line[2:])
-    
-    # 3460
-    line = text_lines[3460].split(' e ')
-    text_lines[3460] = ' '.join(line[0:2])
-    text_lines[3461] = 'Pena - reclusão ' + ' '.join(line[2:])
-
-    # 3452
-    line = text_lines[3452].split(' e ')
-    text_lines[3452] = ' '.join(line[0:2])
-    text_lines[3453] = 'Pena - ' + ' '.join(line[2:])
-    
-    # 2947
-    line = text_lines[2947].split(' ou ')
-    text_lines[2947] = line[0]
-    text_lines[2948] = 'Pena - ' + line[1]
-    
-    # 2469 - remover typo: " de 15 "
-    text_lines[2469] = text_lines[2469].replace(' de 15 ', '')
-    
-    # remover valores de moeda
-    # das linhas 1281, 1714, 1728,
-    # 2031 e 3452
-    def cut_forward(text, word):    
-        word_pos = text.find(word)
-        print(text, word_pos)
-        return text[: word_pos+6]
-    
-    text_lines[1281] = cut_forward(text_lines[1281], 'multa')
-    text_lines[1714] = cut_forward(text_lines[1714], 'multa')
-    text_lines[1728] = cut_forward(text_lines[1728], 'multa')
-    text_lines[2031] = cut_forward(text_lines[2031], 'multa')
-    text_lines[3453] = cut_forward(text_lines[3453], 'multa')+' se o documento é particular.'
-    text_lines[2815] = cut_forward(text_lines[2815], 'multa')
-    
-    return text_lines
 
 def get_tag_end_line(text_lines: list, start_line: int, tag: str) -> int:
     """
@@ -261,7 +181,7 @@ def get_tag_end_line(text_lines: list, start_line: int, tag: str) -> int:
     end_line = lines[1][1][0] - 1
     return end_line
 
-def get_pena(line: str):
+def get_penalties(line: str):
     
     """
     Retorna para cada linha, se existir, uma list de dict para cada pena:
@@ -367,7 +287,7 @@ def get_pena(line: str):
     
     # return data
 
-def apply_penas(text_lines) -> list:
+def apply_penalties(text_lines) -> list:
     """
     Add penas data to the line if there is one:
     (law line number, law text, list of tags, penas)
@@ -378,22 +298,22 @@ def apply_penas(text_lines) -> list:
         classification = line[2]
         pena=''
         if 'pena' in classification:
-            pena = get_pena(line)
+            pena = get_penalties(line)
         item = (line[0], line[1], line[2], pena)
         lines.append (item)
     return lines
 
-def apply_classification(text_lines) -> list:
+def apply_tags(text_lines) -> list:
     """
-    Returns a list of tuples with:
+    Returns a list of dictionaries with:
     (law line number, law text, list of tags)
     
     """
     lines = []
     for n, line in enumerate(text_lines):
-        classification = classify(line)
+        tags = tag(line)
 
-        item = (n, line, classification)
+        item = dict(line=n, text=line, tags=tags)
         lines.append (item)
     return lines
 
@@ -417,71 +337,36 @@ def get_lines_by_tag(text_lines, tags: list) -> list:
 def main():
     text_lines = get_text('decreto.txt')
     text_lines = apply_corrections(text_lines)
-    text_lines = apply_classification(text_lines)
-    text_lines = apply_penas(text_lines)
+    text_lines = apply_tags(text_lines)
+    text_lines = apply_metadata(text_lines)
+    # text_lines = a.apply_penalties(text_lines)
+    # text_lines = a.apply_penalty_changes(text_lines)
+    return text_lines
 
-
-    lines = get_lines_by_tag(text_lines, ['secao', 'titulo', 'capitulo', 
-                                        'parte', 'artigo', 'pena', 'paragrafo', 
-                                        'aumento', 'diminuicao', 'inciso', 'alinea'])
-    tab = 0
+if __name__ == '__main__':
+    lines = main()
+    result = list()
     for line in lines:
-        tag = line[1][2][-1]
-        tab = 0 if tag == 'parte' else 1 if tag == 'titulo' else 2 if tag =='capitulo' else 3 if tag =='secao' else 0
+        parte = line['metadata']['parte']
+        titulo = line['metadata']['titulo'] 
+        capitulo = line['metadata']['capitulo']
+        secao = line['metadata']['secao']
+        artigo = line['metadata']['artigo']
+        paragrafo = line['metadata']['paragrafo']
+        inciso = line['metadata']['inciso']
+        alinea = line['metadata']['alinea']
+        text = ((f'PARTE {parte}' or '-') + ' & ' 
+                + (titulo or '-') + ' & ' 
+                + (capitulo or '-') + ' & ' 
+                + (secao or '-') + ' & ' 
+                + (artigo or '-') + ' & '
+                + (paragrafo or '-') + ' & '
+                + (('INCISO ' if inciso else '') + (inciso or '-')) + ' & '
+                + (('ALÍNEA ' if alinea else '') + (alinea or '-')) + ' & '
+        )
         
-        # print(line[0], '-', ' '*4*tab, line[1][1].strip()) #, '-', line[2], ' - ', line[3])
-
-    option = input('Entre o número do ítem : ')
-    opt = int(option)
-    # grab the exact line data
-    item = lines[opt-1]
-    item_count = item[0]
-    item_line_number = item[1][0]
-    item_content = item[1][1]
-    item_tags = item[1][2]
-
-    # get the line start and end for the choosed item
-    start = item_line_number
-
-    # show up first
-    # grab the last item_tag (-1) due to the tag "reference" 
-    # appears always as the first item
-    end = get_tag_end_line(text_lines, start, item_tags[-1])
-
-    lines = get_lines_by_tag(text_lines[start: end], ['tipo', 'artigo'])
-
-    tab = 0
-    for line in lines:
-        tag = line[1][2][-1]
-        tab = 0 if tag == 'tipo' else 1 if tag == 'artigo' else 0
-        print(line[0], '-', ' '*4*tab, line[1][1].strip()) #,line[1][2])
-
-    option = input('Entre o número do ítem : ')
-    opt = int(option)
-    # grab the exact line data
-    item = lines[opt-1]
-    item_count = item[0]
-    item_line_number = item[1][0]
-    item_content = item[1][1]
-    item_tags = item[1][2]
-
-
-    # get the line start and end for the choosed item
-    start = item_line_number
-
-    # show up first
-    # grab the last item_tag (-1) due to the tag "reference" 
-    # appears always as the first item
-    end = get_tag_end_line(text_lines, start, item_tags[-1])
-
-    lines = get_lines_by_tag(text_lines[start: end], ['artigo', 'pena', 'paragrafo', 'aumento', 'diminuicao', 'inciso', 'alinea'])
-
-    tab = 0
-    for line in lines:
-        tag = line[1][2][-1]
-        tab = 0 if tag == 'artigo' else 1 if tag == 'paragrafo'\
-            else 2 if tag == 'inciso' else 3 if tag == 'alinea' else 4 if tag == 'pena'\
-            else 5 if tag == 'aumento' else 6 if tag == 'diminuicao' else 0
-        # print(line[0], '-', ' '*4*tab, line[1][1].strip()) #,line[1][2])
-        print(line)
-main()
+        if text not in result:
+            result.append(text)
+    
+    for line in sorted(result):     
+        print(line, '\n')
